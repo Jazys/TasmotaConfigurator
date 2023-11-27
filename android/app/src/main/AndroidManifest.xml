@@ -7,7 +7,7 @@
     <uses-feature android:name="android.hardware.wifi" />
 
     <application
-        android:label="config_tasmota"
+        android:label="TasmotaConfig"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
