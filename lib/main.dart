@@ -38,6 +38,7 @@ class _WifiScannerPageState extends State<WifiScannerPage> {
   String _ipAddress   = '192.168.4.1';
   ScanResult? scanResult;
   List<String> _wifiList = [];
+  List<String> _wifiListWithoutTasmota = [];
   String currentSSID ="";
   String wifiPassword ="";
   String tasmotaSSID  ="";
@@ -45,6 +46,7 @@ class _WifiScannerPageState extends State<WifiScannerPage> {
   int TimeToWaitAfterPassword=15;
   int TimeToWaitAfterGetNewIP=5;
   int TimeToWaitAfterWifiDisconnected=5;
+  bool _isConfiguring = false;
 
 
   @override
@@ -116,9 +118,16 @@ class _WifiScannerPageState extends State<WifiScannerPage> {
       var wifiList = await WiFiScan.instance.getScannedResults();
       setState(() {
         _wifiList = wifiList.map((e) => e.ssid).toList();
+        _wifiListWithoutTasmota = wifiList.map((e) => e.ssid).toList();
+
+        _wifiList = _wifiList.where((wifiName) => wifiName.contains('tasmota-')).toList();
+
+        if(_wifiList.isNotEmpty) this.tasmotaSSID=_wifiList[0];
+
+        _wifiListWithoutTasmota = _wifiListWithoutTasmota.where((wifiName) => !_wifiListWithoutTasmota.contains('tasmota-')).toList();
+
       });
-      List<String> filteredWifiList = _wifiList.where((wifiName) => wifiName.contains('tasmota-')).toList();
-      this.tasmotaSSID=filteredWifiList[0];
+
 
     }
   }
@@ -133,14 +142,43 @@ class _WifiScannerPageState extends State<WifiScannerPage> {
         var connectTasmota= await PluginWifiConnect.connect(ssid);
         var tasmotaInfoSSID= await WifiInfo().getWifiInfo();
         print(tasmotaInfoSSID!.bssid);
+        setState(() {
+          _isConfiguring = true;
+        });
+
+        showDialog(
+          context: context,
+          barrierDismissible: false, // L'utilisateur ne peut pas fermer le dialogue
+          builder: (BuildContext context) {
+            return Dialog(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(width: 24),
+                    Text("Config in progress ...."),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+
+
         await _sendGetRequest('http://192.168.4.1/wi?s1=${currentSSID}&p1=${wifiPassword}&save=');
         showToast("Connection is processing !!!");
         await Future.delayed(Duration(seconds: TimeToWaitAfterPassword));
         await _sendGetRequest('http://192.168.4.1');
-        showToast("Get new IP !!!");
+        showToast("Get new IP ${newIpAddress} !!!");
         await Future.delayed(Duration(seconds: TimeToWaitAfterGetNewIP));
         await PluginWifiConnect.disconnect();
         await Future.delayed(Duration(seconds: TimeToWaitAfterWifiDisconnected));
+        Navigator.of(context, rootNavigator: true).pop('dialog');
+        setState(() {
+          _isConfiguring = false; // Arrêtez le chargement une fois terminé
+        });
         showToast("Now you can access to Tasmota with configurated IP");
       } catch (e) {
         // Gestion de l'erreur de connexion
@@ -217,88 +255,109 @@ class _WifiScannerPageState extends State<WifiScannerPage> {
       appBar: AppBar(
         title: Text('Tasmota Configurator'),
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(
-              'Available Wifi',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      body: ListView(
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Text(
+                "Notice:",
+                style: TextStyle(fontSize: 16,fontWeight: FontWeight.bold),
+              ),
             ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _wifiList.length,
-              itemBuilder: (context, index) {
-                return ListTile(
-                  title: Text(_wifiList[index])
-                );
-              },
+            const Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Text(
+                "Please, shutdown all Tasmota device you don't want to configure.\nFollow step 1 to 4 to configure your device in your wifi network."
+                    "\nSelected network are the same use by our phone.\n If IP is already blank, please retry all steps",
+                style: TextStyle(fontSize: 15),
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(
-              'Wifi Key: $wifiPassword', // Afficher la clé WPA
-              style: TextStyle(fontSize: 16),
+            SizedBox(height: 16.0), // Ajoutez un espace vertical ici
+            const Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Text(
+                'Available Tasmota Device ',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ElevatedButton(
-                  onPressed: () {
-                    // Logique pour scanner le QR code
-                    _checkWifi();
-                  },
-                  child: Text('Refresh wifi list'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    // Logique pour scanner le QR code
-                    _scan();
-                  },
-                  child: Text('Scan Wifi Password'),
-                ),
-                SizedBox(height: 8), // Espacement entre les boutons
-                ElevatedButton(
-                  onPressed: () {
-                    // Logique pour entrer la clé WPA
-                    _showPasswordDialog(context);
-                  },
-                  child: Text('Enter Wifi Password'),
-                ),
-                SizedBox(height: 8), // Espacement entre les boutons
-                ElevatedButton(
-                  onPressed: () {
-                    // Logique pour configurer
-                    _connectToWifiAndConfigure(tasmotaSSID);
-                  },
-                  child: Text('Configure Tasmota'),
-                ),
-                SizedBox(height: 8), // Espacement entre les boutons
-                ElevatedButton(
-                  onPressed: () {
-                    // Logique pour configurer
-                    _launchInBrowser();
-                  },
-                  child: Text('Webpage access'),
-                )
-              ],
+            // Ajout de la logique pour gérer une liste vide
+            _wifiList.isNotEmpty
+                ? Expanded(
+              child: ListView.builder(
+                itemCount: _wifiList.length,
+                shrinkWrap: true, // Important pour utiliser dans une ListView
+                physics: NeverScrollableScrollPhysics(),
+                itemBuilder: (context, index) {
+                  return ListTile(
+                    title: Text(_wifiList[index]),
+                  );
+                },
+              ),
+            )
+                : Text("No devices found"),
+            SizedBox(height: 16.0), // Ajoutez un espace vertical ici
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(
+                'Selected Wifi: $currentSSID',
+                style: TextStyle(fontSize: 16),
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(
-              'New tasmota IP : $newIpAddress', // Afficher la clé WPA
-              style: TextStyle(fontSize: 16),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(
+                'Wifi Key: $wifiPassword',
+                style: TextStyle(fontSize: 16),
+              ),
             ),
-          ),
-        ],
-      ),
+            // ... Suite du code ...
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ElevatedButton(
+                    onPressed: _checkWifi,
+                    child: Text('1- Refresh available wifi device'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      var currentSSIDInfo = await WifiInfo().getWifiInfo();
+                      setState(() {
+                        currentSSID = currentSSIDInfo!.ssid!;
+                      });
+                    },
+                    child: Text('2- Refresh your current Wifi'),
+                  ),
+                  SizedBox(height: 8),
+                  ElevatedButton(
+                    onPressed: () => _showPasswordDialog(context),
+                    child: Text('3 -Enter Wifi Password'),
+                  ),
+                  SizedBox(height: 8),
+                  ElevatedButton(
+                    onPressed: () {
+                      _connectToWifiAndConfigure(tasmotaSSID);
+                    },
+                    child: Text('4- Configure Automatically Tasmota'),
+                  ),
+                  SizedBox(height: 8),
+                  ElevatedButton(
+                    onPressed: _launchInBrowser,
+                    child: Text('5- Webpage access'),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(
+                'New tasmota IP : $newIpAddress',
+                style: TextStyle(fontSize: 16),
+              ),
+            ),
+          ],
+        ),
     );
   }
 
