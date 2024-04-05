@@ -403,17 +403,12 @@ class _WifiScannerPageState extends State<WifiScannerPage> {
             ),
             // Ajout de la logique pour gérer une liste vide
             _wifiList.isNotEmpty
-                ? Expanded(
-              child: ListView.builder(
-                itemCount: _wifiList.length,
-                shrinkWrap: true, // Important pour utiliser dans une ListView
-                physics: NeverScrollableScrollPhysics(),
-                itemBuilder: (context, index) {
-                  return ListTile(
-                    title: Text(_wifiList[index]),
-                  );
-                },
-              ),
+                ? Column(
+              children: _wifiList.map((wifiName) {
+                return ListTile(
+                  title: Text(wifiName),
+                );
+              }).toList(),
             )
                 : Text("No devices found"),
             SizedBox(height: 16.0), // Ajoutez un espace vertical ici
